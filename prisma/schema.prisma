@@ -1,0 +1,173 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  password     String
+  businessName String
+  role         Role     @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  products     Product[]
+  sales        Sale[]
+  alerts       Alert[]
+  @@map("users")
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  products    Product[]
+  @@map("categories")
+}
+
+model Product {
+  id                String      @id @default(uuid())
+  name              String
+  barcode           String?     @unique
+  sku               String?     @unique
+  categoryId        String
+  userId            String
+  costPrice         Float
+  sellingPrice      Float
+  suggestedMinPrice Float?
+  suggestedMaxPrice Float?
+  quantity          Int         @default(0)
+  lowStockThreshold Int         @default(10)
+  unit              String      @default("piece")
+  manufacturingDate DateTime?
+  expiryDate        DateTime?
+  batchNumber       String?
+  supplier          String?
+  imageUrl          String?
+  stockMethod       StockMethod @default(FIFO)
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  category          Category    @relation(fields: [categoryId], references: [id])
+  user              User        @relation(fields: [userId], references: [id])
+  saleItems         SaleItem[]
+  stockLogs         StockLog[]
+  alerts            Alert[]
+  @@map("products")
+}
+
+enum StockMethod {
+  FIFO
+  LIFO
+}
+
+model Sale {
+  id          String      @id @default(uuid())
+  userId      String
+  totalAmount Float
+  totalProfit Float       @default(0)
+  paymentMode PaymentMode @default(CASH)
+  notes       String?
+  createdAt   DateTime    @default(now())
+  user        User        @relation(fields: [userId], references: [id])
+  saleItems   SaleItem[]
+  @@map("sales")
+}
+
+enum PaymentMode {
+  CASH
+  MOBILE_MONEY
+  CARD
+  CREDIT
+}
+
+model SaleItem {
+  id         String  @id @default(uuid())
+  saleId     String
+  productId  String
+  quantity   Int
+  unitPrice  Float
+  costPrice  Float
+  totalPrice Float
+  profit     Float
+  sale       Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product    Product @relation(fields: [productId], references: [id])
+  @@map("sale_items")
+}
+
+model StockLog {
+  id          String       @id @default(uuid())
+  productId   String
+  type        StockLogType
+  quantity    Int
+  reason      String?
+  previousQty Int
+  newQty      Int
+  createdAt   DateTime     @default(now())
+  product     Product      @relation(fields: [productId], references: [id])
+  @@map("stock_logs")
+}
+
+enum StockLogType {
+  IN
+  OUT
+  ADJUSTMENT
+  SALE
+  RETURN
+  EXPIRED
+}
+
+model Alert {
+  id        String    @id @default(uuid())
+  userId    String
+  productId String?
+  type      AlertType
+  message   String
+  isRead    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+  product   Product?  @relation(fields: [productId], references: [id])
+  @@map("alerts")
+}
+
+enum AlertType {
+  LOW_STOCK
+  OUT_OF_STOCK
+  EXPIRY_SOON
+  EXPIRED
+  PRICE_SUGGESTION
+  INFLATION_ALERT
+}
+
+model EconomicData {
+  id         String   @id @default(uuid())
+  country    String   @default("RW")
+  indicator  String
+  value      Float
+  year       Int
+  source     String
+  fetchedAt  DateTime @default(now())
+  @@unique([country, indicator, year])
+  @@map("economic_data")
+}
+
+model ExchangeRate {
+  id           String   @id @default(uuid())
+  fromCurrency String
+  toCurrency   String
+  rate         Float
+  fetchedAt    DateTime @default(now())
+  @@map("exchange_rates")
+}
