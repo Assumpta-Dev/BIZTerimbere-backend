@@ -496,7 +496,8 @@ async function main() {
       for (const prod of selectedProducts) {
         const fullProd = await prisma.product.findUnique({ where: { id: prod.id } });
         if (!fullProd) continue;
-        const qty = Math.floor(Math.random() * 3) + 1;
+        const qty = Math.min(Math.floor(Math.random() * 3) + 1, Math.max(0, fullProd.quantity));
+        if (qty <= 0) continue;
         const unitPrice = fullProd.sellingPrice;
         const costPrice = fullProd.costPrice;
         const totalPrice = qty * unitPrice;
@@ -521,9 +522,14 @@ async function main() {
 
       // Update product quantities
       for (const item of saleItemsData) {
+        const productBefore = await prisma.product.findUnique({ where: { id: item.productId } });
+        if (!productBefore) continue;
+        const previousQty = productBefore.quantity;
+        const newQty = Math.max(0, previousQty - item.quantity);
+
         await prisma.product.update({
           where: { id: item.productId },
-          data: { quantity: { decrement: item.quantity } },
+          data: { quantity: newQty },
         });
         await prisma.stockLog.create({
           data: {
@@ -531,8 +537,8 @@ async function main() {
             type: "SALE",
             quantity: item.quantity,
             reason: `Sale #${sale.id.slice(0, 8)}`,
-            previousQty: 0,
-            newQty: 0,
+            previousQty,
+            newQty,
             createdAt: saleDate,
           },
         });
