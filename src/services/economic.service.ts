@@ -172,7 +172,7 @@ export class EconomicService {
 
     // Save suggestions to products
     await Promise.all(
-      suggestions.map((s) =>
+      suggestions.map((s: typeof suggestions[0]) =>
         prisma.product.update({
           where: { id: s.productId },
           data: {
@@ -183,10 +183,10 @@ export class EconomicService {
       )
     );
 
-    const highUrgency = suggestions.filter((s) => s.urgency === "high");
+    const highUrgency = suggestions.filter((s: typeof suggestions[0]) => s.urgency === "high");
     if (highUrgency.length > 0) {
       await Promise.all(
-        highUrgency.slice(0, 5).map((s) =>
+        highUrgency.slice(0, 5).map((s: typeof suggestions[0]) =>
           prisma.alert.create({
             data: {
               userId,
@@ -199,17 +199,17 @@ export class EconomicService {
       );
     }
 
+    const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
     return {
       indicators,
-      suggestions: suggestions.sort((a, b) => {
-        const order = { high: 0, medium: 1, low: 2 };
-        return order[a.urgency] - order[b.urgency];
-      }),
+      suggestions: suggestions.sort((a: typeof suggestions[0], b: typeof suggestions[0]) =>
+        order[a.urgency] - order[b.urgency]
+      ),
       summary: {
         total: suggestions.length,
-        underpriced: suggestions.filter((s) => s.urgency === "high").length,
-        overpriced: suggestions.filter((s) => s.urgency === "medium").length,
-        optimal: suggestions.filter((s) => s.urgency === "low").length,
+        underpriced: suggestions.filter((s: typeof suggestions[0]) => s.urgency === "high").length,
+        overpriced: suggestions.filter((s: typeof suggestions[0]) => s.urgency === "medium").length,
+        optimal: suggestions.filter((s: typeof suggestions[0]) => s.urgency === "low").length,
       },
     };
   }
