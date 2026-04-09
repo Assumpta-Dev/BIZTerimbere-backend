@@ -7,94 +7,78 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  password     String
-  businessName String
-  role         Role     @default(OWNER)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  products     Product[]
-  sales        Sale[]
-  alerts       Alert[]
-  @@map("users")
+model alerts {
+  id        String    @id
+  userId    String
+  productId String?
+  type      AlertType
+  message   String
+  isRead    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  products  products? @relation(fields: [productId], references: [id])
+  users     users     @relation(fields: [userId], references: [id])
 }
 
-enum Role {
-  OWNER
-  MANAGER
-  STAFF
-}
-
-model Category {
-  id          String    @id @default(uuid())
-  name        String    @unique
+model categories {
+  id          String     @id
+  name        String     @unique
   description String?
-  createdAt   DateTime  @default(now())
-  products    Product[]
-  @@map("categories")
+  createdAt   DateTime   @default(now())
+  products    products[]
 }
 
-model Product {
-  id                String      @id @default(uuid())
+model economic_data {
+  id        String   @id
+  country   String   @default("RW")
+  indicator String
+  value     Float
+  year      Int
+  source    String
+  fetchedAt DateTime @default(now())
+
+  @@unique([country, indicator, year])
+}
+
+model exchange_rates {
+  id           String   @id
+  fromCurrency String
+  toCurrency   String
+  rate         Float
+  fetchedAt    DateTime @default(now())
+}
+
+model products {
+  id                String       @id
   name              String
-  barcode           String?     @unique
-  sku               String?     @unique
+  barcode           String?      @unique
+  sku               String?      @unique
   categoryId        String
   userId            String
   costPrice         Float
   sellingPrice      Float
   suggestedMinPrice Float?
   suggestedMaxPrice Float?
-  quantity          Int         @default(0)
-  lowStockThreshold Int         @default(10)
-  unit              String      @default("piece")
+  quantity          Int          @default(0)
+  lowStockThreshold Int          @default(10)
+  unit              String       @default("piece")
   manufacturingDate DateTime?
   expiryDate        DateTime?
   batchNumber       String?
   supplier          String?
   imageUrl          String?
-  stockMethod       StockMethod @default(FIFO)
-  isActive          Boolean     @default(true)
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  category          Category    @relation(fields: [categoryId], references: [id])
-  user              User        @relation(fields: [userId], references: [id])
-  saleItems         SaleItem[]
-  stockLogs         StockLog[]
-  alerts            Alert[]
-  @@map("products")
+  stockMethod       StockMethod  @default(FIFO)
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime
+  alerts            alerts[]
+  categories        categories   @relation(fields: [categoryId], references: [id])
+  users             users        @relation(fields: [userId], references: [id])
+  sale_items        sale_items[]
+  stock_logs        stock_logs[]
 }
 
-enum StockMethod {
-  FIFO
-  LIFO
-}
-
-model Sale {
-  id          String      @id @default(uuid())
-  userId      String
-  totalAmount Float
-  totalProfit Float       @default(0)
-  paymentMode PaymentMode @default(CASH)
-  notes       String?
-  createdAt   DateTime    @default(now())
-  user        User        @relation(fields: [userId], references: [id])
-  saleItems   SaleItem[]
-  @@map("sales")
-}
-
-enum PaymentMode {
-  CASH
-  MOBILE_MONEY
-  CARD
-  CREDIT
-}
-
-model SaleItem {
-  id         String  @id @default(uuid())
+model sale_items {
+  id         String   @id
   saleId     String
   productId  String
   quantity   Int
@@ -102,13 +86,24 @@ model SaleItem {
   costPrice  Float
   totalPrice Float
   profit     Float
-  sale       Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  product    Product @relation(fields: [productId], references: [id])
-  @@map("sale_items")
+  products   products @relation(fields: [productId], references: [id])
+  sales      sales    @relation(fields: [saleId], references: [id], onDelete: Cascade)
 }
 
-model StockLog {
-  id          String       @id @default(uuid())
+model sales {
+  id          String       @id
+  userId      String
+  totalAmount Float
+  totalProfit Float        @default(0)
+  paymentMode PaymentMode  @default(CASH)
+  notes       String?
+  createdAt   DateTime     @default(now())
+  sale_items  sale_items[]
+  users       users        @relation(fields: [userId], references: [id])
+}
+
+model stock_logs {
+  id          String       @id
   productId   String
   type        StockLogType
   quantity    Int
@@ -116,30 +111,21 @@ model StockLog {
   previousQty Int
   newQty      Int
   createdAt   DateTime     @default(now())
-  product     Product      @relation(fields: [productId], references: [id])
-  @@map("stock_logs")
+  products    products     @relation(fields: [productId], references: [id])
 }
 
-enum StockLogType {
-  IN
-  OUT
-  ADJUSTMENT
-  SALE
-  RETURN
-  EXPIRED
-}
-
-model Alert {
-  id        String    @id @default(uuid())
-  userId    String
-  productId String?
-  type      AlertType
-  message   String
-  isRead    Boolean   @default(false)
-  createdAt DateTime  @default(now())
-  user      User      @relation(fields: [userId], references: [id])
-  product   Product?  @relation(fields: [productId], references: [id])
-  @@map("alerts")
+model users {
+  id           String     @id
+  name         String
+  email        String     @unique
+  password     String
+  businessName String
+  role         Role       @default(OWNER)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime
+  alerts       alerts[]
+  products     products[]
+  sales        sales[]
 }
 
 enum AlertType {
@@ -151,23 +137,29 @@ enum AlertType {
   INFLATION_ALERT
 }
 
-model EconomicData {
-  id         String   @id @default(uuid())
-  country    String   @default("RW")
-  indicator  String
-  value      Float
-  year       Int
-  source     String
-  fetchedAt  DateTime @default(now())
-  @@unique([country, indicator, year])
-  @@map("economic_data")
+enum PaymentMode {
+  CASH
+  MOBILE_MONEY
+  CARD
+  CREDIT
 }
 
-model ExchangeRate {
-  id           String   @id @default(uuid())
-  fromCurrency String
-  toCurrency   String
-  rate         Float
-  fetchedAt    DateTime @default(now())
-  @@map("exchange_rates")
+enum Role {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+enum StockLogType {
+  IN
+  OUT
+  ADJUSTMENT
+  SALE
+  RETURN
+  EXPIRED
+}
+
+enum StockMethod {
+  FIFO
+  LIFO
 }
