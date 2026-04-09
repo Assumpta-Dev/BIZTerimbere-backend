@@ -5,7 +5,6 @@ import helmet from "helmet";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
-import cron from "node-cron";
 
 import logger from "./config/logger";
 import prisma from "./config/database";
@@ -18,12 +17,7 @@ import productRouter from "./routes/product.routes";
 import salesRouter from "./routes/sales.routes";
 import { analyticsRouter, economicRouter, alertsRouter, categoriesRouter } from "./routes/other.routes";
 
-// Services
-import alertService from "./services/alert.service";
-import economicService from "./services/economic.service";
-
 const app = express();
-const PORT = process.env.PORT || 5000;
 
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -35,7 +29,7 @@ app.use(cors({
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
@@ -89,7 +83,6 @@ app.use(
   })
 );
 
-// Expose swagger JSON for external tools
 app.get("/api/docs.json", (_req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.send(swaggerSpec);
@@ -108,64 +101,53 @@ app.use("/api/categories", categoriesRouter);
 app.use(notFound);
 app.use(errorHandler);
 
-// ─── Scheduled Jobs ───────────────────────────────────────────────────────────
-// Run alert checks every 6 hours
-cron.schedule("0 */6 * * *", async () => {
-  logger.info("⏰ Running scheduled alert checks...");
-  try {
-    const users = await prisma.user.findMany({ select: { id: true } });
-    for (const user of users) {
-      await alertService.runAlertChecks(user.id);
+// ─── Start Server (local dev only) ───────────────────────────────────────────
+// Vercel runs as serverless — no listen() needed
+if (process.env.NODE_ENV !== "production" && require.main === module) {
+  const PORT = process.env.PORT || 5000;
+  const economicService = require("./services/economic.service").default;
+  const cron = require("node-cron");
+  const alertService = require("./services/alert.service").default;
+
+  cron.schedule("0 */6 * * *", async () => {
+    try {
+      const users = await prisma.user.findMany({ select: { id: true } });
+      for (const user of users) await alertService.runAlertChecks(user.id);
+    } catch (err) {
+      logger.error("Alert check cron failed:", err);
     }
-    logger.info(`✅ Alert checks complete for ${users.length} user(s)`);
-  } catch (err) {
-    logger.error("Alert check cron failed:", err);
-  }
-});
+  });
 
-// Refresh economic data daily at 8am
-cron.schedule("0 8 * * *", async () => {
-  logger.info("💹 Refreshing economic data from World Bank...");
-  try {
-    await economicService.fetchInflationData();
-    await economicService.fetchExchangeRate();
-    logger.info("✅ Economic data refreshed");
-  } catch (err) {
-    logger.error("Economic data refresh failed:", err);
-  }
-});
+  cron.schedule("0 8 * * *", async () => {
+    try {
+      await economicService.fetchInflationData();
+      await economicService.fetchExchangeRate();
+    } catch (err) {
+      logger.error("Economic data refresh failed:", err);
+    }
+  });
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
-const server = app.listen(PORT, async () => {
-  logger.info(`\n🚀 BIZTerimbere API running on port ${PORT}`);
-  logger.info(`📖 Swagger Docs: http://localhost:${PORT}/api/docs`);
-  logger.info(`💚 Health Check: http://localhost:${PORT}/health`);
-  logger.info(`🌍 Environment: ${process.env.NODE_ENV || "development"}\n`);
+  app.listen(PORT, async () => {
+    logger.info(`\n🚀 BIZTerimbere API running on port ${PORT}`);
+    logger.info(`📖 Swagger Docs: http://localhost:${PORT}/api/docs`);
+    logger.info(`💚 Health Check: http://localhost:${PORT}/health`);
+    try {
+      await economicService.fetchInflationData();
+      await economicService.fetchExchangeRate();
+      logger.info("✅ Economic data cache warmed up");
+    } catch {
+      logger.warn("⚠️  Could not pre-fetch economic data");
+    }
+  });
 
-  // Warm up economic data cache on start
-  try {
-    await economicService.fetchInflationData();
-    await economicService.fetchExchangeRate();
-    logger.info("✅ Economic data cache warmed up");
-  } catch {
-    logger.warn("⚠️  Could not pre-fetch economic data (will retry later)");
-  }
-});
-
-// Graceful shutdown
-const shutdown = async (signal: string) => {
-  logger.info(`\n${signal} received. Shutting down gracefully...`);
-  server.close(async () => {
+  process.on("SIGTERM", async () => {
     await prisma.$disconnect();
-    logger.info("✅ Database disconnected. Server stopped.");
     process.exit(0);
   });
-};
-
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("unhandledRejection", (reason) => {
-  logger.error("Unhandled Rejection:", reason);
-});
+  process.on("SIGINT", async () => {
+    await prisma.$disconnect();
+    process.exit(0);
+  });
+}
 
 export default app;
